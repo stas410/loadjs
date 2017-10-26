@@ -7,7 +7,9 @@ loadjs = (function () {
 var devnull = function() {},
     bundleIdCache = {},
     bundleResultCache = {},
-    bundleCallbackQueue = {};
+    bundleCallbackQueue = {},
+    lazyBundles = {},
+    subscribedLazyBundles = {};   // bundles subscribed to with ready() prior to call to lazy()
 
 
 /**
@@ -177,6 +179,21 @@ function loadFiles(paths, callbackFn, args) {
   for (i=0; i < x; i++) loadFile(paths[i], fn, args);
 }
 
+/**
+ * Load specified bundles that were also previously declared using loadjs.lazy()
+ * @param {(string|string[])} deps - List of bundle ids
+ */
+function loadLazyBundles(deps) {
+  if (typeof deps === 'string') deps = [deps];
+  for (var i = 0; i < deps.length; i++) {
+    var dep = deps[i];
+    if (!loadjs.isDefined(dep)) {
+      if (dep in lazyBundles) loadjs(lazyBundles[dep], dep);
+      else subscribedLazyBundles[dep] = 1;  // TODO: test this scenario (core code may trip in this case)
+    }
+  }
+}
+
 
 /**
  * Initiate script load and register bundle.
@@ -222,6 +239,7 @@ function loadjs(paths, arg1, arg2) {
  * @param {Object} args - success/error arguments
  */
 loadjs.ready = function ready(deps, args) {
+  loadLazyBundles(deps);
   // subscribe to bundle load event
   subscribe(deps, function (depsNotFound) {
     // execute callbacks
@@ -258,6 +276,23 @@ loadjs.reset = function reset() {
  */
 loadjs.isDefined = function isDefined(bundleId) {
   return bundleId in bundleIdCache;
+};
+
+
+/**
+ * Provide bundle load definition, like in loadjs() but without loading them unless/until loadjs.ready() is called
+ * @param {(string|string[])} paths - The file paths
+ * @param {(string)} bundleId - The bundleId
+ */
+loadjs.lazy = function (paths, bundleId) {
+  if (typeof paths === 'string') paths = [paths];
+  if (bundleId in subscribedLazyBundles) {
+    loadjs(paths, bundleId);
+    delete subscribedLazyBundles[bundleId];
+    return;
+  }
+  if (bundleId in lazyBundles) lazyBundles[bundleId].push.apply(lazyBundles[bundleId], paths);
+  else lazyBundles[bundleId] = paths;
 };
 
 
